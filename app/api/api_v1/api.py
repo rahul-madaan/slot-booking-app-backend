@@ -1,5 +1,7 @@
 from fastapi import APIRouter
-from .endpoints import hello
+from .endpoints import default
+from .endpoints import login
 
 router = APIRouter()
-router.include_router(hello.router, prefix="/hello", tags=["hello"])
+router.include_router(default.router, prefix="/v1", tags=["v1"])
+router.include_router(login.router, prefix="/v1", tags=["v1"])

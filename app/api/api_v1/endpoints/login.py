@@ -4,6 +4,7 @@ import mysql.connector
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from app import cypher
+from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -28,6 +29,12 @@ class VerifyLogin(BaseModel):
     encrypted_email_ID_len: str
 
 
+class ReserveSlot(BaseModel):
+    email_ID: str
+    days_code: str
+    slot_number: int
+
+
 # localhost:8000/api/v1 = default
 @router.post("/login")
 async def login(request_body: LoginUser):
@@ -47,9 +54,7 @@ async def login(request_body: LoginUser):
 
 
 @router.post("/verify-login")
-async def login(request_body: VerifyLogin):
-    print(request_body.encrypted_email_ID_len)
-    print(request_body.encrypted_email_ID)
+async def verify_login(request_body: VerifyLogin):
     try:
         if 5 * int(cypher.decrypt(str(request_body.encrypted_email_ID_len))) == len(request_body.encrypted_email_ID):
             try:
@@ -68,3 +73,42 @@ async def login(request_body: VerifyLogin):
         print(e)
         return {'loginSuccess': 0,
                 'user_emailID': ""}
+
+@router.post("/reserve-slot")
+async def reserve_slot(request_body: ReserveSlot):
+    mycursor.execute("SELECT email_id,booking_status  FROM slot".format(request_body.days_code,request_body.slot_number))
+    columns = mycursor.description
+    result = [{columns[index][0]: column for index, column in enumerate(value)} for value in mycursor.fetchall()]
+    for slot in result:
+        if slot['email_id'] == request_body.email_ID and slot['booking_status'] == "BOOKED":
+            return {"Status": "1 slot already booked"}
+        elif slot['email_id'] == request_body.email_ID and slot['booking_status'] == "TEMP_BOOKED":
+            mycursor.execute("DELETE FROM slot where email_id = \"{}\"".format(request_body.email_ID))
+            mydb.commit()
+    mycursor.execute("SELECT * FROM slot WHERE days_code=\"{}\" AND slot_number = {}".format(request_body.days_code,request_body.slot_number))
+    columns = mycursor.description
+    result = [{columns[index][0]: column for index, column in enumerate(value)} for value in mycursor.fetchall()]
+    if len(result)<int(os.getenv("TOTAL_SLOTS_PER_BATCH")):
+        mycursor.execute("INSERT INTO slot (email_id, slot_number, days_code, booking_status) VALUES (\"{}\",{},\"{}\",\"TEMP_BOOKED\")".format(request_body.email_ID,request_body.slot_number,request_body.days_code))
+        mydb.commit()
+        return {"Status": "TEMP_BOOKED"}
+    else:
+        return {"Status": "ALREADY_FULL"}
+
+
+@router.get("/available-slots/{days_code}")
+async def available_slots(days_code):
+    mycursor.execute("DELETE FROM slot WHERE booking_status = \"TEMP_BOOKED\" AND booking_time < \"{}\"".format(str(datetime.now()-timedelta(minutes=15))[:19]))
+    mydb.commit()
+    mycursor.execute("SELECT * FROM slot WHERE days_code=\"{}\"".format(days_code))
+    columns = mycursor.description
+    result = [{columns[index][0]: column for index, column in enumerate(value)} for value in mycursor.fetchall()]
+    available_slots = [0]*8
+    total_slots = int(os.getenv("TOTAL_SLOTS_PER_BATCH"))
+    for slot_detail in result:
+        slot_number = slot_detail["slot_number"]
+        available_slots[slot_number-1] += 1
+    for i in range(len(available_slots)):
+        available_slots[i] = total_slots - available_slots[i]
+
+    return {"available_slots": available_slots}

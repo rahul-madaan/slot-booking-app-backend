@@ -42,6 +42,12 @@ class ReserveSlot(BaseModel):
     slot_number: int
 
 
+class ConfirmReservedSlot(BaseModel):
+    email_id: str
+    days_code: str
+    slot_number: int
+
+
 class LeaveReservedSlot(BaseModel):
     email_ID: str
 
@@ -153,3 +159,18 @@ async def leave_reserved_slot(request_body: LeaveReservedSlot):
         return {"status": "Successfully unreserved slot if already reserved"}
     except:
         return {"status": "unable to unreserve slot booked by user"}
+
+
+@router.post("/confirm-reserved-slot")
+async def leave_reserved_slot(request_body: ConfirmReservedSlot):
+    mycursor.execute(
+        "SELECT * FROM slot WHERE email_id=\"{}\" AND days_code=\"{}\" AND slot_number={} AND booking_status=\"TEMP_BOOKED\"".format(request_body.email_id,request_body.days_code,request_body.slot_number+1))
+    columns = mycursor.description
+    result = [{columns[index][0]: column for index, column in enumerate(value)} for value in mycursor.fetchall()]
+    if len(result) == 1:
+        mycursor.execute(
+            "UPDATE slot SET booking_status=\"BOOKED\" WHERE email_id=\"{}\" AND days_code=\"{}\" AND slot_number={} AND booking_status=\"TEMP_BOOKED\"".format(request_body.email_id,request_body.days_code,request_body.slot_number+1))
+        mydb.commit()
+        return {"status": "Booked slot successfully"}
+    else:
+        return {"status": "15 minutes expired, book another slot"}

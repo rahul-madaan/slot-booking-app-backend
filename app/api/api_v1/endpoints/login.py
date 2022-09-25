@@ -24,15 +24,26 @@ class LoginUser(BaseModel):
     password: str
 
 
+class RegisterUser(BaseModel):
+    name: str
+    phone_number: str
+    email_id: str
+    password: str
+
+
 class VerifyLogin(BaseModel):
     encrypted_email_ID: str
     encrypted_email_ID_len: str
 
 
 class ReserveSlot(BaseModel):
-    email_ID: str
+    email_id: str
     days_code: str
     slot_number: int
+
+
+class LeaveReservedSlot(BaseModel):
+    email_ID: str
 
 
 # localhost:8000/api/v1 = default
@@ -45,12 +56,28 @@ async def login(request_body: LoginUser):
         if request_body.email_ID == credentials['email_ID']:
             if request_body.password == credentials['password']:
                 encryptedEmail = cypher.encrypt(request_body.email_ID)
-                email_len=cypher.encrypt(str(len(request_body.email_ID)))
-                return {'statusCode': 0, 'message': 'Login Successful', 'encrypted_emailID': encryptedEmail, 'email_len': email_len}
+                email_len = cypher.encrypt(str(len(request_body.email_ID)))
+                return {'statusCode': 0, 'message': 'Login Successful', 'encrypted_emailID': encryptedEmail,
+                        'email_len': email_len}
             else:
                 return {'statusCode': 1, 'message': 'Password does not match'}
     else:
         return {'statusCode': 2, 'message': 'User not registered'}
+
+
+@router.post("/register")
+async def login(request_body: RegisterUser):
+    mycursor.execute("SELECT email_id FROM user WHERE email_id=\"{}\"".format(request_body.email_id))
+    columns = mycursor.description
+    result = [{columns[index][0]: column for index, column in enumerate(value)} for value in mycursor.fetchall()]
+    if len(result) != 0:
+        return {"status": "User already registered!"}
+
+    mycursor.execute(
+        "INSERT INTO user (name, phone_number, email_id, password) VALUES (\"{}\", \"{}\", \"{}\", \"{}\")".format(
+            request_body.name, request_body.phone_number, request_body.email_id, request_body.password))
+    mydb.commit()
+    return {"status": "User registered successfully!"}
 
 
 @router.post("/verify-login")
@@ -74,22 +101,24 @@ async def verify_login(request_body: VerifyLogin):
         return {'loginSuccess': 0,
                 'user_emailID': ""}
 
+
 @router.post("/reserve-slot")
 async def reserve_slot(request_body: ReserveSlot):
-    mycursor.execute("SELECT email_id,booking_status  FROM slot".format(request_body.days_code,request_body.slot_number))
+    mycursor.execute(
+        "SELECT email_id,booking_status  FROM slot".format(request_body.days_code, request_body.slot_number))
     columns = mycursor.description
     result = [{columns[index][0]: column for index, column in enumerate(value)} for value in mycursor.fetchall()]
     for slot in result:
-        if slot['email_id'] == request_body.email_ID and slot['booking_status'] == "BOOKED":
+        if slot['email_id'] == request_body.email_id and slot['booking_status'] == "BOOKED":
             return {"Status": "1 slot already booked"}
-        elif slot['email_id'] == request_body.email_ID and slot['booking_status'] == "TEMP_BOOKED":
-            mycursor.execute("DELETE FROM slot where email_id = \"{}\"".format(request_body.email_ID))
-            mydb.commit()
-    mycursor.execute("SELECT * FROM slot WHERE days_code=\"{}\" AND slot_number = {}".format(request_body.days_code,request_body.slot_number))
+    mycursor.execute("SELECT * FROM slot WHERE days_code=\"{}\" AND slot_number = {}".format(request_body.days_code,
+                                                                                             request_body.slot_number + 1))
     columns = mycursor.description
     result = [{columns[index][0]: column for index, column in enumerate(value)} for value in mycursor.fetchall()]
-    if len(result)<int(os.getenv("TOTAL_SLOTS_PER_BATCH")):
-        mycursor.execute("INSERT INTO slot (email_id, slot_number, days_code, booking_status) VALUES (\"{}\",{},\"{}\",\"TEMP_BOOKED\")".format(request_body.email_ID,request_body.slot_number,request_body.days_code))
+    if len(result) < int(os.getenv("TOTAL_SLOTS_PER_BATCH")):
+        mycursor.execute(
+            "INSERT INTO slot (email_id, slot_number, days_code, booking_status) VALUES (\"{}\",{},\"{}\",\"TEMP_BOOKED\")".format(
+                request_body.email_id, request_body.slot_number + 1, request_body.days_code))
         mydb.commit()
         return {"Status": "TEMP_BOOKED"}
     else:
@@ -98,17 +127,29 @@ async def reserve_slot(request_body: ReserveSlot):
 
 @router.get("/available-slots/{days_code}")
 async def available_slots(days_code):
-    mycursor.execute("DELETE FROM slot WHERE booking_status = \"TEMP_BOOKED\" AND booking_time < \"{}\"".format(str(datetime.now()-timedelta(minutes=15))[:19]))
+    mycursor.execute("DELETE FROM slot WHERE booking_status = \"TEMP_BOOKED\" AND booking_time < \"{}\"".format(
+        str(datetime.now() - timedelta(minutes=15))[:19]))
     mydb.commit()
     mycursor.execute("SELECT * FROM slot WHERE days_code=\"{}\"".format(days_code))
     columns = mycursor.description
     result = [{columns[index][0]: column for index, column in enumerate(value)} for value in mycursor.fetchall()]
-    available_slots = [0]*8
+    available_slots = [0] * 8
     total_slots = int(os.getenv("TOTAL_SLOTS_PER_BATCH"))
     for slot_detail in result:
         slot_number = slot_detail["slot_number"]
-        available_slots[slot_number-1] += 1
+        available_slots[slot_number - 1] += 1
     for i in range(len(available_slots)):
         available_slots[i] = total_slots - available_slots[i]
 
     return {"available_slots": available_slots}
+
+
+@router.post("/leave-reserved-slot")
+async def leave_reserved_slot(request_body: LeaveReservedSlot):
+    try:
+        mycursor.execute(
+            "DELETE FROM slot WHERE email_id = \"{}\" AND booking_status=\"TEMP_BOOKED\"".format(request_body.email_ID))
+        mydb.commit()
+        return {"status": "Successfully unreserved slot if already reserved"}
+    except:
+        return {"status": "unable to unreserve slot booked by user"}

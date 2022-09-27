@@ -48,6 +48,10 @@ class ConfirmReservedSlot(BaseModel):
     slot_number: int
 
 
+class UserSlotDetails(BaseModel):
+    email_id: str
+
+
 class LeaveReservedSlot(BaseModel):
     email_ID: str
 
@@ -164,13 +168,35 @@ async def leave_reserved_slot(request_body: LeaveReservedSlot):
 @router.post("/confirm-reserved-slot")
 async def leave_reserved_slot(request_body: ConfirmReservedSlot):
     mycursor.execute(
-        "SELECT * FROM slot WHERE email_id=\"{}\" AND days_code=\"{}\" AND slot_number={} AND booking_status=\"TEMP_BOOKED\"".format(request_body.email_id,request_body.days_code,request_body.slot_number+1))
+        "SELECT * FROM slot WHERE email_id=\"{}\" AND days_code=\"{}\" AND slot_number={} AND booking_status=\"TEMP_BOOKED\"".format(
+            request_body.email_id, request_body.days_code, request_body.slot_number + 1))
     columns = mycursor.description
     result = [{columns[index][0]: column for index, column in enumerate(value)} for value in mycursor.fetchall()]
     if len(result) == 1:
         mycursor.execute(
-            "UPDATE slot SET booking_status=\"BOOKED\" WHERE email_id=\"{}\" AND days_code=\"{}\" AND slot_number={} AND booking_status=\"TEMP_BOOKED\"".format(request_body.email_id,request_body.days_code,request_body.slot_number+1))
+            "UPDATE slot SET booking_status=\"BOOKED\" WHERE email_id=\"{}\" AND days_code=\"{}\" AND slot_number={} AND booking_status=\"TEMP_BOOKED\"".format(
+                request_body.email_id, request_body.days_code, request_body.slot_number + 1))
         mydb.commit()
         return {"status": "Booked slot successfully"}
     else:
         return {"status": "15 minutes expired, book another slot"}
+
+
+@router.post("/fetch-user-slot-details")
+async def fetch_user_slot_details(request_body: UserSlotDetails):
+    print(request_body.email_id)
+    if request_body.email_id == "":
+        return {"status": "Email field is empty"}
+    mycursor.execute(
+        "SELECT * FROM slot WHERE email_id=\"{}\"".format(request_body.email_id))
+    columns = mycursor.description
+    result = [{columns[index][0]: column for index, column in enumerate(value)} for value in mycursor.fetchall()]
+    if len(result) == 0:
+        return {"status": "No slot booked yet"}
+    elif len(result) == 1:
+        slot_number = result[0]['slot_number']
+        days_code = result[0]['days_code']
+        return {"status": "Fetched booked slot details successfully!",
+                "slot_number": slot_number,
+                "days_code": days_code
+                }

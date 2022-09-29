@@ -196,7 +196,9 @@ async def fetch_user_slot_details(request_body: UserSlotDetails):
     elif len(result) == 1:
         slot_number = result[0]['slot_number']
         days_code = result[0]['days_code']
+        start_date = result[0]['start_date']
         return {"status": "Fetched booked slot details successfully!",
                 "slot_number": slot_number,
-                "days_code": days_code
+                "days_code": days_code,
+                "start_date": start_date
                 }

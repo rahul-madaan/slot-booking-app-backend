@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from .endpoints import default
-from .endpoints import login
+from .endpoints import MySQL
 
 router = APIRouter()
 router.include_router(default.router, prefix="/v1", tags=["v1"])
-router.include_router(login.router, prefix="/v1", tags=["v1"])
+router.include_router(MySQL.router, prefix="/v1", tags=["v1"])

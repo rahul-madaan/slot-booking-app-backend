@@ -184,7 +184,6 @@ async def leave_reserved_slot(request_body: ConfirmReservedSlot):
 
 @router.post("/fetch-user-slot-details")
 async def fetch_user_slot_details(request_body: UserSlotDetails):
-    print(request_body.email_id)
     if request_body.email_id == "":
         return {"status": "Email field is empty"}
     mycursor.execute(

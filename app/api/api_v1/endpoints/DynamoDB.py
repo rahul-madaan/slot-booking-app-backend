@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import boto3
 import os
 
@@ -36,7 +37,8 @@ async def login(request_body: MarkAttendance):
             Item={
                 'email_id': request_body.email_id,
                 'IP_address': request_body.IP_address,
-                'browser_fingerprint': request_body.browser_fingerprint
+                'browser_fingerprint': request_body.browser_fingerprint,
+                'date': str(datetime.now()+timedelta(minutes=330))[:19]
             })
         return "Added record successfully"
     except ClientError as err:

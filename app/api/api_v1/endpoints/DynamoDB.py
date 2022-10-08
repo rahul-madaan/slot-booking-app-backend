@@ -24,7 +24,7 @@ class MarkAttendance(BaseModel):
 
 
 @router.post("/mark-attendance")
-async def login(request_body: MarkAttendance):
+async def mark_attendance(request_body: MarkAttendance):
     try:
         ## BATCH UPDATE
         # with product_table.batch_writer() as writer:
@@ -38,7 +38,7 @@ async def login(request_body: MarkAttendance):
                 'email_id': request_body.email_id,
                 'IP_address': request_body.IP_address,
                 'browser_fingerprint': request_body.browser_fingerprint,
-                'date': str(datetime.now()+timedelta(minutes=330))[:19]
+                'timestamp': str(datetime.now()+timedelta(minutes=330))[:19]
             })
         return "Added record successfully"
     except ClientError as err:

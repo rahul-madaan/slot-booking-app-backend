@@ -202,11 +202,12 @@ async def fetch_user_slot_details(request_body: UserSlotDetails):
                 "start_date": start_date
                 }
 
+
 @router.get("/check-location/")
-async def location_check(latitude:str, longitude:str):
+async def check_location(latitude: str, longitude: str):
     latitude = float(latitude)
     longitude = float(longitude)
-    if latitude==0 or longitude==0:
+    if latitude == 0 or longitude == 0:
         return {"status": "LOCATION_NOT_CORRECT"}
     if float(os.getenv("MAX_LATITUDE")) >= latitude >= float(os.getenv("MIN_LATITUDE")) and float(os.getenv(
             "MAX_LONGITUDE")) >= longitude >= float(os.getenv("MIN_LONGITUDE")):

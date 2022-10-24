@@ -187,7 +187,7 @@ async def fetch_user_slot_details(request_body: UserSlotDetails):
     if request_body.email_id == "":
         return {"status": "Email field is empty"}
     mycursor.execute(
-        "SELECT * FROM slot WHERE email_id=\"{}\"".format(request_body.email_id))
+        "SELECT * FROM slot WHERE email_id=\"{}\" and booking_status=\"BOOKED\"".format(request_body.email_id))
     columns = mycursor.description
     result = [{columns[index][0]: column for index, column in enumerate(value)} for value in mycursor.fetchall()]
     if len(result) == 0:
@@ -203,14 +203,4 @@ async def fetch_user_slot_details(request_body: UserSlotDetails):
                 }
 
 
-@router.get("/check-location/")
-async def check_location(latitude: str, longitude: str):
-    latitude = float(latitude)
-    longitude = float(longitude)
-    if latitude == 0 or longitude == 0:
-        return {"status": "LOCATION_NOT_CORRECT"}
-    if float(os.getenv("MAX_LATITUDE")) >= latitude >= float(os.getenv("MIN_LATITUDE")) and float(os.getenv(
-            "MAX_LONGITUDE")) >= longitude >= float(os.getenv("MIN_LONGITUDE")):
-        return {"status": "INSIDE_GYM"}
-    else:
-        return {"status": "OUTSIDE_GYM"}
+

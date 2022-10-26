@@ -32,6 +32,9 @@ class MarkAttendance(BaseModel):
 class SetAttendanceStatus(BaseModel):
     value: str
 
+class NetID(BaseModel):
+    net_id: str
+
 
 class Login(BaseModel):
     net_id: str
@@ -120,10 +123,10 @@ async def mark_attendance(request_body: MarkAttendance):
         print(ip_status)
         return ip_status
 
-    # location_status = check_location(request_body.latitude, request_body.longitude)
-    # if location_status['status'] != "LOCATION_INSIDE_B315":
-    #     print(location_status)
-    #     return location_status
+    location_status = check_location(request_body.latitude, request_body.longitude)
+    if location_status['status'] != "LOCATION_INSIDE_B315":
+        print(location_status)
+        return location_status
 
     attendance_table.put_item(
         Item={
@@ -224,9 +227,37 @@ async def check_attendance_status():
 
 
 @router.post("/set-attendance-status")
-async def check_attendance_status(request_body: SetAttendanceStatus):
+async def set_attendance_status(request_body: SetAttendanceStatus):
     if request_body.value == "true":
         flags_table.put_item(Item={"key": 'attendance_initiated', "value": 'true'})
     else:
         flags_table.put_item(Item={"key": 'attendance_initiated', "value": 'false'})
     return {"status": "set complete"}
+
+
+@router.post("/search-student")
+async def search_student(request_body: NetID):
+    result = student_details_table.query(KeyConditionExpression=Key('net_id').eq(request_body.net_id))
+    if len(result['Items']) == 0:
+        return {"status": "NET_ID_NOT_FOUND"}
+    else:
+        result_attendance = attendance_table.query(IndexName="date-index", KeyConditionExpression=Key('date').eq(str(datetime.now())[:10]))
+        for item in result_attendance["Items"]:
+            if item["net_id"] == request_body.net_id:
+                result['Items'][0]["attendance"] = "PRESENT"
+                return result['Items'][0]
+        result["Items"][0]["attendance"] = "ABSENT"
+        return result['Items'][0]
+
+
+@router.post("/mark-attendance-override")
+async def mark_attendance_override(request_body: NetID):
+    attendance_table.put_item(
+        Item={
+            'net_id': request_body.net_id,
+            'IP_address': "0.0.0.0",
+            'browser_fingerprint': "0000000000000000",
+            'date': str(datetime.now())[:10],
+            'time': str(datetime.now())[11:19]
+        })
+    return {"status": "ATTENDANCE_MARKED_SUCCESSFULLY"}

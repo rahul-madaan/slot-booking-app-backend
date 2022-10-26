@@ -29,6 +29,10 @@ class MarkAttendance(BaseModel):
     longitude: str
 
 
+class SetAttendanceStatus(BaseModel):
+    value: str
+
+
 class Login(BaseModel):
     net_id: str
     password: str
@@ -41,6 +45,16 @@ class VerifyLogin(BaseModel):
 
 @router.post("/login")
 async def login(request_body: Login):
+    if request_body.net_id == "sonia.khetarpaul@snu.edu.in":
+        if request_body.password == "strongpassword":
+            encryptedNetID = cypher.encrypt(request_body.net_id)
+            net_id_len = cypher.encrypt(str(len(request_body.net_id)))
+            return {"status": "LOGIN_SUCCESSFUL",
+                    "encrypted_net_id": encryptedNetID,
+                    "net_id_len": net_id_len}
+        else:
+            return {"status": "INCORRECT_PASSWORD"}
+
     result = student_details_table.query(KeyConditionExpression=Key('net_id').eq(request_body.net_id))
     if len(result["Items"]) == 0:
         return {"status": "USER_NOT_REGISTERED"}
@@ -62,6 +76,9 @@ async def verify_login(request_body: VerifyLogin):
         if 5 * int(cypher.decrypt(str(request_body.encrypted_net_id_len))) == len(request_body.encrypted_net_id):
             try:
                 decMessage = cypher.decrypt(request_body.encrypted_net_id)
+                if decMessage == "sonia.khetarpaul@snu.edu.in":
+                    return {'loginSuccess': 1,
+                            'user_net_id': decMessage}
                 result = student_details_table.query(KeyConditionExpression=Key('net_id').eq(decMessage))['Items'][0]
                 name = result['first_name'] + " " + result["last_name"]
                 roll_number = result['roll_number']
@@ -114,7 +131,7 @@ async def mark_attendance(request_body: MarkAttendance):
             'IP_address': request_body.IP_address,
             'browser_fingerprint': request_body.browser_fingerprint,
             'date': str(datetime.now())[:10],
-            'time': str(datetime.now())[10:19]
+            'time': str(datetime.now())[11:19]
         })
     print({"status": "ATTENDANCE_MARKED_SUCCESSFULLY"})
     return {"status": "ATTENDANCE_MARKED_SUCCESSFULLY"}
@@ -125,6 +142,7 @@ def check_attendance_initiated_status():
     if result["Items"][0]["value"] == 'false':
         return {"status": "ATTENDANCE_NOT_INITIATED"}
     return {"status": "ATTENDANCE_INITIATED"}
+
 
 def check_already_marked(net_id: str):
     result = attendance_table.query(KeyConditionExpression=Key('net_id').eq(net_id))
@@ -170,3 +188,45 @@ def check_location(latitude: str, longitude: str):
         return {"status": "LOCATION_INSIDE_B315"}
     else:
         return {"status": "LOCATION_OUTSIDE_B315"}
+
+
+@router.get("/check-attendance")
+async def check_attendance():
+    result = (attendance_table.query(IndexName="date-index",
+                                     KeyConditionExpression=Key('date').eq(str(datetime.now())[:10])))
+    present = []
+    final_present = []
+    if len(result["Items"]) == 0:
+        return {"status": "NO ONE MARKED YET",
+                "present": []}
+    else:
+        for item in result["Items"]:
+            print(item)
+            present.append(item['net_id'])
+        for net_id in present:
+            result = student_details_table.query(KeyConditionExpression=Key('net_id').eq(net_id))['Items'][0]
+            details = {}
+            details['net_id'] = net_id
+            details['roll_number'] = result['roll_number']
+            details['name'] = result['first_name'] + " " + result['last_name']
+            final_present.append(details)
+
+        return {"status": "marked",
+                "present": final_present}
+
+
+@router.get("/check-attendance-status")
+async def check_attendance_status():
+    result = flags_table.query(KeyConditionExpression=Key('key').eq("attendance_initiated"))
+    if result["Items"][0]["value"] == 'false':
+        return {"status": 0}
+    return {"status": 1}
+
+
+@router.post("/set-attendance-status")
+async def check_attendance_status(request_body: SetAttendanceStatus):
+    if request_body.value == "true":
+        flags_table.put_item(Item={"key": 'attendance_initiated', "value": 'true'})
+    else:
+        flags_table.put_item(Item={"key": 'attendance_initiated', "value": 'false'})
+    return {"status": "set complete"}

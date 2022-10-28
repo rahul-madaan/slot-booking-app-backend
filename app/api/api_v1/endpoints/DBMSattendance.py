@@ -1,18 +1,20 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 import boto3
 import os
-
 from boto3.dynamodb.conditions import Key
+from botocore.config import Config
 from dotenv import load_dotenv
 from fastapi import APIRouter
 from pydantic import BaseModel
+import csv
 
 from app import cypher
 
 router = APIRouter()
 
 load_dotenv()
-
+s3 = boto3.resource(service_name='s3')
+s3_client = boto3.client('s3', config=Config(signature_version='s3v4'))
 dynamo_resource = boto3.resource(service_name=os.getenv("AWS_SERVICE_NAME"),
                                  region_name=os.getenv("AWS_REGION_NAME"))
 
@@ -31,6 +33,7 @@ class MarkAttendance(BaseModel):
 
 class SetAttendanceStatus(BaseModel):
     value: str
+
 
 class NetID(BaseModel):
     net_id: str
@@ -204,7 +207,6 @@ async def check_attendance():
                 "present": []}
     else:
         for item in result["Items"]:
-            print(item)
             present.append(item['net_id'])
         for net_id in present:
             result = student_details_table.query(KeyConditionExpression=Key('net_id').eq(net_id))['Items'][0]
@@ -241,7 +243,8 @@ async def search_student(request_body: NetID):
     if len(result['Items']) == 0:
         return {"status": "NET_ID_NOT_FOUND"}
     else:
-        result_attendance = attendance_table.query(IndexName="date-index", KeyConditionExpression=Key('date').eq(str(datetime.now())[:10]))
+        result_attendance = attendance_table.query(IndexName="date-index",
+                                                   KeyConditionExpression=Key('date').eq(str(datetime.now())[:10]))
         for item in result_attendance["Items"]:
             if item["net_id"] == request_body.net_id:
                 result['Items'][0]["attendance"] = "PRESENT"
@@ -261,3 +264,49 @@ async def mark_attendance_override(request_body: NetID):
             'time': str(datetime.now())[11:19]
         })
     return {"status": "ATTENDANCE_MARKED_SUCCESSFULLY"}
+
+
+@router.get("/download-attendance")
+async def download_attendance():
+    BUCKET = "fastapi-slot-booking"
+    result = (attendance_table.query(IndexName="date-index",
+                                     KeyConditionExpression=Key('date').eq(str(datetime.now())[:10])))
+    details = student_details_table.scan()['Items']
+    present = []
+    for item in result['Items']:
+        present.append(item['net_id'])
+    for i in range(len(present)):
+        for details_net_id in details:
+            if present[i] == details_net_id["net_id"]:
+                present[i] = details_net_id["roll_number"]
+                break
+    student_details = []
+    with open('app/sample_attendance.csv') as file:
+        csvFile = csv.reader(file)
+        for lines in csvFile:
+            student_details.append(lines)
+
+    student_details = student_details[1:]
+
+    for row in student_details:
+        if row[0] in present:
+            row[2] = 'Present'
+
+    text = 'Student Id, Student Name, Attendance Status \n'
+    for row in student_details:
+        line = row[0] + "," + row[1] + "," + row[2] + "\n"
+        text += line
+    with open("/tmp/attendance " + str(datetime.now())[:10] + ".csv", "w") as text_file:
+        text_file.write(text)
+
+    s3.Bucket(BUCKET).upload_file("/tmp/attendance " + str(datetime.now())[:10] + ".csv",
+                                  "DBMS_attendance/attendance " + str(datetime.now())[:10] + ".csv")
+    url = s3_client.generate_presigned_url(
+        ClientMethod='get_object',
+        Params={'Bucket': 'fastapi-slot-booking',
+                'Key': "DBMS_attendance/attendance " + str(datetime.now())[:10] + ".csv"},
+        ExpiresIn=60,
+    )
+    if os.path.exists("/tmp/attendance " + str(datetime.now())[:10] + ".csv"):
+        os.remove("/tmp/attendance " + str(datetime.now())[:10] + ".csv")
+    return {"url": url}

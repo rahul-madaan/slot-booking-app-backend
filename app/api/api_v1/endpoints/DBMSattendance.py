@@ -296,17 +296,17 @@ async def download_attendance():
     for row in student_details:
         line = row[0] + "," + row[1] + "," + row[2] + "\n"
         text += line
-    with open("/tmp/attendance " + str(datetime.now())[:10] + ".csv", "w") as text_file:
+    with open("/tmp/attendance.csv", "w") as text_file:
         text_file.write(text)
 
-    s3.Bucket(BUCKET).upload_file("/tmp/attendance " + str(datetime.now())[:10] + ".csv",
-                                  "DBMS_attendance/attendance " + str(datetime.now())[:10] + ".csv")
+    s3.Bucket(BUCKET).upload_file("/tmp/attendance.csv",
+                                  "DBMS_attendance/attendance.csv")
     url = s3_client.generate_presigned_url(
         ClientMethod='get_object',
         Params={'Bucket': 'fastapi-slot-booking',
-                'Key': "DBMS_attendance/attendance " + str(datetime.now())[:10] + ".csv"},
+                'Key': "DBMS_attendance/attendance.csv"},
         ExpiresIn=60,
     )
-    if os.path.exists("/tmp/attendance " + str(datetime.now())[:10] + ".csv"):
-        os.remove("/tmp/attendance " + str(datetime.now())[:10] + ".csv")
+    if os.path.exists("/tmp/attendance.csv"):
+        os.remove("/tmp/attendance.csv")
     return {"url": url}

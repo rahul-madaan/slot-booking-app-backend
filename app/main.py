@@ -25,20 +25,5 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-
-@app.get("/")
-async def root():
-    return {"message": "Hello World I AM ROOT URL"}
-
-
-@app.get("/fetch-all-slots")
-def root():
-    mycursor.execute(
-        "SELECT * FROM slot")
-    columns = mycursor.description
-    result = [{columns[index][0]: column for index, column in enumerate(value)} for value in mycursor.fetchall()]
-    return result
-
-
 app.include_router(api_router, prefix="/api")
 handler = Mangum(app)

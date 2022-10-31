@@ -7,12 +7,14 @@ from dotenv import load_dotenv
 from fastapi import APIRouter
 from pydantic import BaseModel
 import csv
+import logging
 
 from app import cypher
 
 router = APIRouter()
 
 load_dotenv()
+logging.basicConfig(filename=os.getenv("LOG_PATH"), filemode='a', format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 s3 = boto3.resource(service_name='s3')
 s3_client = boto3.client('s3', config=Config(signature_version='s3v4'))
 dynamo_resource = boto3.resource(service_name=os.getenv("AWS_SERVICE_NAME"),
@@ -21,6 +23,7 @@ dynamo_resource = boto3.resource(service_name=os.getenv("AWS_SERVICE_NAME"),
 student_details_table = dynamo_resource.Table('dbms-student-details')
 attendance_table = dynamo_resource.Table('dbms-attendance')
 flags_table = dynamo_resource.Table('flags')
+rekognition = boto3.client('rekognition')
 
 
 class MarkAttendance(BaseModel):
@@ -51,56 +54,73 @@ class VerifyLogin(BaseModel):
 
 @router.post("/login")
 async def login(request_body: Login):
+    logging.warning("Endpoint = /login, Body= " + str(request_body))
     if request_body.net_id == "sonia.khetarpaul@snu.edu.in":
         if request_body.password == "strongpassword":
             encryptedNetID = cypher.encrypt(request_body.net_id)
             net_id_len = cypher.encrypt(str(len(request_body.net_id)))
+            logging.warning("response: " + str({"status": "LOGIN_SUCCESSFUL",
+                    "encrypted_net_id": encryptedNetID,
+                    "net_id_len": net_id_len}))
             return {"status": "LOGIN_SUCCESSFUL",
                     "encrypted_net_id": encryptedNetID,
                     "net_id_len": net_id_len}
         else:
-            return {"status": "INCORRECT_PASSWORD"}
+            logging.warning("response: " + str({"status": "PASSWORD_DOES_NOT_MATCH"}))
+            return {"status": "PASSWORD_DOES_NOT_MATCH"}
 
     result = student_details_table.query(KeyConditionExpression=Key('net_id').eq(request_body.net_id))
     if len(result["Items"]) == 0:
+        logging.warning("response: " + str({"status": "USER_NOT_REGISTERED"}))
         return {"status": "USER_NOT_REGISTERED"}
     else:
         student_details = result["Items"][0]
         if student_details['roll_number'] == request_body.password:
             encryptedNetID = cypher.encrypt(request_body.net_id)
             net_id_len = cypher.encrypt(str(len(request_body.net_id)))
+            logging.warning("response: " + str({"status": "LOGIN_SUCCESSFUL", "encrypted_net_id": encryptedNetID, "net_id_len": net_id_len}))
             return {"status": "LOGIN_SUCCESSFUL",
                     "encrypted_net_id": encryptedNetID,
                     "net_id_len": net_id_len}
         else:
+            logging.warning("response: " + str({"status": "PASSWORD_DOES_NOT_MATCH"}))
             return {"status": "PASSWORD_DOES_NOT_MATCH"}
 
 
 @router.post("/verify-login")
 async def verify_login(request_body: VerifyLogin):
+    logging.warning("Endpoint = /verify-login, Body= " + str(request_body))
     try:
         if 5 * int(cypher.decrypt(str(request_body.encrypted_net_id_len))) == len(request_body.encrypted_net_id):
             try:
                 decMessage = cypher.decrypt(request_body.encrypted_net_id)
                 if decMessage == "sonia.khetarpaul@snu.edu.in":
+                    logging.warning("response: " + str({'loginSuccess': 1,
+                            'user_net_id': decMessage}))
                     return {'loginSuccess': 1,
                             'user_net_id': decMessage}
                 result = student_details_table.query(KeyConditionExpression=Key('net_id').eq(decMessage))['Items'][0]
                 name = result['first_name'] + " " + result["last_name"]
                 roll_number = result['roll_number']
+                logging.warning("response: " + str({'loginSuccess': 1, 'user_net_id': decMessage, 'name': name, 'roll_number': roll_number}))
                 return {'loginSuccess': 1,
                         'user_net_id': decMessage,
                         'name': name,
                         'roll_number': roll_number}
             except Exception as e:
                 print(e)
+                logging.error(e)
+                logging.warning("response " + str({'loginSuccess': 0, 'user_net_id': ""}))
                 return {'loginSuccess': 0,
                         'user_net_id': ""}
         else:
+            logging.warning("response " + str({'loginSuccess': 0, 'user_net_id': ""}))
             return {'loginSuccess': 0,
                     'user_net_id': ""}
     except Exception as e:
         print(e)
+        logging.error(e)
+        logging.warning("response "+str({'loginSuccess': 0, 'user_net_id': ""}))
         return {'loginSuccess': 0,
                 'user_net_id': ""}
 
@@ -300,13 +320,38 @@ async def download_attendance():
         text_file.write(text)
 
     s3.Bucket(BUCKET).upload_file("/tmp/attendance.csv",
-                                  "DBMS_attendance/attendance.csv")
+                                  "DBMS_attendance/attendance " + str(datetime.now())[:10] +".csv")
     url = s3_client.generate_presigned_url(
         ClientMethod='get_object',
         Params={'Bucket': 'fastapi-slot-booking',
-                'Key': "DBMS_attendance/attendance.csv"},
-        ExpiresIn=60,
+                'Key': "DBMS_attendance/attendance " + str(datetime.now())[:10] +".csv"},
+        ExpiresIn=10,
     )
     if os.path.exists("/tmp/attendance.csv"):
         os.remove("/tmp/attendance.csv")
     return {"url": url}
+
+@router.get("/upload-log-file")
+async def upload_log_file():
+    BUCKET = "fastapi-slot-booking"
+    s3.Bucket(BUCKET).upload_file("/tmp/app.log",
+                                  "logs/app.log")
+    url = s3_client.generate_presigned_url(
+        ClientMethod='get_object',
+        Params={'Bucket': 'fastapi-slot-booking',
+                'Key': "logs/app.log"},
+        ExpiresIn=100
+    )
+    return {"url": url}
+
+@router.get("/delete-log-file")
+async def delete_log_file():
+    open('/tmp/app.log', 'w').close()
+    return {"status": "app.log cleared"}
+
+
+
+
+@router.get("/check-image")
+async def check_image():
+    return "response"

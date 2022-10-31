@@ -32,6 +32,7 @@ class MarkAttendance(BaseModel):
     browser_fingerprint: str
     latitude: str
     longitude: str
+    auth_token: str
 
 
 class SetAttendanceStatus(BaseModel):
@@ -40,21 +41,27 @@ class SetAttendanceStatus(BaseModel):
 
 class NetID(BaseModel):
     net_id: str
+    auth_token: str
 
 
 class Login(BaseModel):
     net_id: str
     password: str
+    auth_token: str
 
 
 class VerifyLogin(BaseModel):
     encrypted_net_id: str
     encrypted_net_id_len: str
+    auth_token: str
 
 
 @router.post("/login")
 async def login(request_body: Login):
     logging.warning("Endpoint = /login, Body= " + str(request_body))
+    if request_body.auth_token != os.getenv("REACT_APP_API_AUTH_TOKEN"):
+        logging.warning("response: " + str({"status": "unauthorized API call"}))
+        return {"status": "unauthorized API call"}
     if request_body.net_id == "sonia.khetarpaul@snu.edu.in":
         if request_body.password == "strongpassword":
             encryptedNetID = cypher.encrypt(request_body.net_id)
@@ -90,6 +97,9 @@ async def login(request_body: Login):
 @router.post("/verify-login")
 async def verify_login(request_body: VerifyLogin):
     logging.warning("Endpoint = /verify-login, Body= " + str(request_body))
+    if request_body.auth_token != os.getenv("REACT_APP_API_AUTH_TOKEN"):
+        logging.warning("response: " + str({"status": "unauthorized API call"}))
+        return {"status": "unauthorized API call"}
     try:
         if 5 * int(cypher.decrypt(str(request_body.encrypted_net_id_len))) == len(request_body.encrypted_net_id):
             try:
@@ -128,6 +138,9 @@ async def verify_login(request_body: VerifyLogin):
 @router.post("/mark-attendance")
 async def mark_attendance(request_body: MarkAttendance):
     logging.warning("Endpoint = /mark-attendance, Body= " + str(request_body))
+    if request_body.auth_token != os.getenv("REACT_APP_API_AUTH_TOKEN"):
+        logging.warning("response: " + str({"status": "unauthorized API call"}))
+        return {"status": "unauthorized API call"}
     already_marked_status = check_already_marked(request_body.net_id)
     if already_marked_status["status"] == 'ALREADY_MARKED':
         logging.warning("response: " + str(already_marked_status))
@@ -138,15 +151,15 @@ async def mark_attendance(request_body: MarkAttendance):
         logging.warning("response: " + str(attendance_initiated_status))
         return attendance_initiated_status
 
-    bp_status = check_browser_fingerprint(request_body.browser_fingerprint)
-    if bp_status['status'] != "VERIFIED":
-        logging.warning("response: " + str(bp_status))
-        return bp_status
-
-    ip_status = check_IP_address(request_body.IP_address)
-    if ip_status['status'] != "VERIFIED":
-        logging.warning("response: " + str(ip_status))
-        return ip_status
+    # bp_status = check_browser_fingerprint(request_body.browser_fingerprint)
+    # if bp_status['status'] != "VERIFIED":
+    #     logging.warning("response: " + str(bp_status))
+    #     return bp_status
+    #
+    # ip_status = check_IP_address(request_body.IP_address)
+    # if ip_status['status'] != "VERIFIED":
+    #     logging.warning("response: " + str(ip_status))
+    #     return ip_status
 
     location_status = check_location(request_body.latitude, request_body.longitude)
     if location_status['status'] != "LOCATION_INSIDE_B315":
@@ -270,6 +283,9 @@ async def set_attendance_status(request_body: SetAttendanceStatus):
 @router.post("/search-student")
 async def search_student(request_body: NetID):
     logging.warning("Endpoint = /search-student, Body= " + str(request_body))
+    if request_body.auth_token != os.getenv("REACT_APP_API_AUTH_TOKEN"):
+        logging.warning("response: " + str({"status": "unauthorized API call"}))
+        return {"status": "unauthorized API call"}
     result = student_details_table.query(KeyConditionExpression=Key('net_id').eq(request_body.net_id))
     if len(result['Items']) == 0:
         logging.warning("response: " + str({"status": "NET_ID_NOT_FOUND"}))
@@ -290,6 +306,9 @@ async def search_student(request_body: NetID):
 @router.post("/mark-attendance-override")
 async def mark_attendance_override(request_body: NetID):
     logging.warning("Endpoint = /mark-attendance-override, Body= " + str(request_body))
+    if request_body.auth_token != os.getenv("REACT_APP_API_AUTH_TOKEN"):
+        logging.warning("response: " + str({"status": "unauthorized API call"}))
+        return {"status": "unauthorized API call"}
     attendance_table.put_item(
         Item={
             'net_id': request_body.net_id,

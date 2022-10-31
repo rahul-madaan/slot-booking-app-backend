@@ -127,28 +127,30 @@ async def verify_login(request_body: VerifyLogin):
 
 @router.post("/mark-attendance")
 async def mark_attendance(request_body: MarkAttendance):
+    logging.warning("Endpoint = /mark-attendance, Body= " + str(request_body))
     already_marked_status = check_already_marked(request_body.net_id)
     if already_marked_status["status"] == 'ALREADY_MARKED':
-        print(already_marked_status)
+        logging.warning("response: " + str(already_marked_status))
         return already_marked_status
 
     attendance_initiated_status = check_attendance_initiated_status()
     if attendance_initiated_status['status'] == "ATTENDANCE_NOT_INITIATED":
+        logging.warning("response: " + str(attendance_initiated_status))
         return attendance_initiated_status
 
     bp_status = check_browser_fingerprint(request_body.browser_fingerprint)
     if bp_status['status'] != "VERIFIED":
-        print(bp_status)
+        logging.warning("response: " + str(bp_status))
         return bp_status
 
     ip_status = check_IP_address(request_body.IP_address)
     if ip_status['status'] != "VERIFIED":
-        print(ip_status)
+        logging.warning("response: " + str(ip_status))
         return ip_status
 
     location_status = check_location(request_body.latitude, request_body.longitude)
     if location_status['status'] != "LOCATION_INSIDE_B315":
-        print(location_status)
+        logging.warning("response: " + str(location_status))
         return location_status
 
     attendance_table.put_item(
@@ -159,7 +161,7 @@ async def mark_attendance(request_body: MarkAttendance):
             'date': str(datetime.now())[:10],
             'time': str(datetime.now())[11:19]
         })
-    print({"status": "ATTENDANCE_MARKED_SUCCESSFULLY"})
+    logging.warning("response: " + str({"status": "ATTENDANCE_MARKED_SUCCESSFULLY"}))
     return {"status": "ATTENDANCE_MARKED_SUCCESSFULLY"}
 
 
@@ -218,11 +220,13 @@ def check_location(latitude: str, longitude: str):
 
 @router.get("/check-attendance")
 async def check_attendance():
+    logging.warning("Endpoint = /check-attendance, Body= ''")
     result = (attendance_table.query(IndexName="date-index",
                                      KeyConditionExpression=Key('date').eq(str(datetime.now())[:10])))
     present = []
     final_present = []
     if len(result["Items"]) == 0:
+        logging.warning("response: " + str({"status": "NO ONE MARKED YET", "present": []}))
         return {"status": "NO ONE MARKED YET",
                 "present": []}
     else:
@@ -236,31 +240,39 @@ async def check_attendance():
             details['name'] = result['first_name'] + " " + result['last_name']
             final_present.append(details)
 
+        logging.warning("response: " + str({"status": "marked", "present": final_present}))
         return {"status": "marked",
                 "present": final_present}
 
 
 @router.get("/check-attendance-status")
 async def check_attendance_status():
+    logging.warning("Endpoint = /check-attendance-status, Body= ''")
     result = flags_table.query(KeyConditionExpression=Key('key').eq("attendance_initiated"))
     if result["Items"][0]["value"] == 'false':
+        logging.warning("response: " + str({"status": 0}))
         return {"status": 0}
+    logging.warning("response: " + str({"status": 1}))
     return {"status": 1}
 
 
 @router.post("/set-attendance-status")
 async def set_attendance_status(request_body: SetAttendanceStatus):
+    logging.warning("Endpoint = /set-attendance-status, Body= " + str(request_body))
     if request_body.value == "true":
         flags_table.put_item(Item={"key": 'attendance_initiated', "value": 'true'})
     else:
         flags_table.put_item(Item={"key": 'attendance_initiated', "value": 'false'})
+    logging.warning("response: " + str({"status": "set complete"}))
     return {"status": "set complete"}
 
 
 @router.post("/search-student")
 async def search_student(request_body: NetID):
+    logging.warning("Endpoint = /search-student, Body= " + str(request_body))
     result = student_details_table.query(KeyConditionExpression=Key('net_id').eq(request_body.net_id))
     if len(result['Items']) == 0:
+        logging.warning("response: " + str({"status": "NET_ID_NOT_FOUND"}))
         return {"status": "NET_ID_NOT_FOUND"}
     else:
         result_attendance = attendance_table.query(IndexName="date-index",
@@ -268,13 +280,16 @@ async def search_student(request_body: NetID):
         for item in result_attendance["Items"]:
             if item["net_id"] == request_body.net_id:
                 result['Items'][0]["attendance"] = "PRESENT"
+                logging.warning("response: " + str(result['Items'][0]))
                 return result['Items'][0]
         result["Items"][0]["attendance"] = "ABSENT"
+        logging.warning("response: " + str(result['Items'][0]))
         return result['Items'][0]
 
 
 @router.post("/mark-attendance-override")
 async def mark_attendance_override(request_body: NetID):
+    logging.warning("Endpoint = /mark-attendance-override, Body= " + str(request_body))
     attendance_table.put_item(
         Item={
             'net_id': request_body.net_id,
@@ -283,75 +298,57 @@ async def mark_attendance_override(request_body: NetID):
             'date': str(datetime.now())[:10],
             'time': str(datetime.now())[11:19]
         })
+    logging.warning("response: " + str({"status": "ATTENDANCE_MARKED_SUCCESSFULLY"}))
     return {"status": "ATTENDANCE_MARKED_SUCCESSFULLY"}
 
 
 @router.get("/download-attendance")
 async def download_attendance():
-    BUCKET = "fastapi-slot-booking"
-    result = (attendance_table.query(IndexName="date-index",
-                                     KeyConditionExpression=Key('date').eq(str(datetime.now())[:10])))
-    details = student_details_table.scan()['Items']
-    present = []
-    for item in result['Items']:
-        present.append(item['net_id'])
-    for i in range(len(present)):
-        for details_net_id in details:
-            if present[i] == details_net_id["net_id"]:
-                present[i] = details_net_id["roll_number"]
-                break
-    student_details = []
-    with open('app/sample_attendance.csv') as file:
-        csvFile = csv.reader(file)
-        for lines in csvFile:
-            student_details.append(lines)
+    logging.warning("Endpoint = /download-attendance, Body= ''")
+    try:
+        BUCKET = "fastapi-slot-booking"
+        result = (attendance_table.query(IndexName="date-index",
+                                         KeyConditionExpression=Key('date').eq(str(datetime.now())[:10])))
+        details = student_details_table.scan()['Items']
+        present = []
+        for item in result['Items']:
+            present.append(item['net_id'])
+        for i in range(len(present)):
+            for details_net_id in details:
+                if present[i] == details_net_id["net_id"]:
+                    present[i] = details_net_id["roll_number"]
+                    break
+        student_details = []
+        with open('app/sample_attendance.csv') as file:
+            csvFile = csv.reader(file)
+            for lines in csvFile:
+                student_details.append(lines)
 
-    student_details = student_details[1:]
+        student_details = student_details[1:]
 
-    for row in student_details:
-        if row[0] in present:
-            row[2] = 'Present'
+        for row in student_details:
+            if row[0] in present:
+                row[2] = 'Present'
 
-    text = 'Student Id, Student Name, Attendance Status \n'
-    for row in student_details:
-        line = row[0] + "," + row[1] + "," + row[2] + "\n"
-        text += line
-    with open("/tmp/attendance.csv", "w") as text_file:
-        text_file.write(text)
+        text = 'Student Id, Student Name, Attendance Status \n'
+        for row in student_details:
+            line = row[0] + "," + row[1] + "," + row[2] + "\n"
+            text += line
+        with open("/tmp/attendance.csv", "w") as text_file:
+            text_file.write(text)
 
-    s3.Bucket(BUCKET).upload_file("/tmp/attendance.csv",
-                                  "DBMS_attendance/attendance " + str(datetime.now())[:10] +".csv")
-    url = s3_client.generate_presigned_url(
-        ClientMethod='get_object',
-        Params={'Bucket': 'fastapi-slot-booking',
-                'Key': "DBMS_attendance/attendance " + str(datetime.now())[:10] +".csv"},
-        ExpiresIn=10,
-    )
-    if os.path.exists("/tmp/attendance.csv"):
-        os.remove("/tmp/attendance.csv")
-    return {"url": url}
-
-@router.get("/upload-log-file")
-async def upload_log_file():
-    BUCKET = "fastapi-slot-booking"
-    s3.Bucket(BUCKET).upload_file("/tmp/app.log",
-                                  "logs/app.log")
-    url = s3_client.generate_presigned_url(
-        ClientMethod='get_object',
-        Params={'Bucket': 'fastapi-slot-booking',
-                'Key': "logs/app.log"},
-        ExpiresIn=100
-    )
-    return {"url": url}
-
-@router.get("/delete-log-file")
-async def delete_log_file():
-    open('/tmp/app.log', 'w').close()
-    return {"status": "app.log cleared"}
-
-
-
-
-@router.get("/check-image")
-async def check_image():
-    return "response"
+        s3.Bucket(BUCKET).upload_file("/tmp/attendance.csv",
+                                      "DBMS_attendance/attendance " + str(datetime.now())[:10] +".csv")
+        url = s3_client.generate_presigned_url(
+            ClientMethod='get_object',
+            Params={'Bucket': 'fastapi-slot-booking',
+                    'Key': "DBMS_attendance/attendance " + str(datetime.now())[:10] +".csv"},
+            ExpiresIn=10,
+        )
+        if os.path.exists("/tmp/attendance.csv"):
+            os.remove("/tmp/attendance.csv")
+        logging.warning("response: " + str({"url": url}))
+        return {"url": url}
+    except Exception as e:
+        logging.error("response: " + str({"error": e}))
+        return {"error": e}

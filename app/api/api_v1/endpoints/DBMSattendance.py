@@ -4,7 +4,7 @@ import os
 from boto3.dynamodb.conditions import Key
 from botocore.config import Config
 from dotenv import load_dotenv
-from fastapi import APIRouter
+from fastapi import APIRouter, UploadFile, File
 from pydantic import BaseModel
 import csv
 import logging
@@ -362,7 +362,7 @@ async def download_attendance():
             ClientMethod='get_object',
             Params={'Bucket': 'fastapi-slot-booking',
                     'Key': "DBMS_attendance/attendance " + str(datetime.now())[:10] +".csv"},
-            ExpiresIn=10,
+            ExpiresIn=30,
         )
         if os.path.exists("/tmp/attendance.csv"):
             os.remove("/tmp/attendance.csv")
@@ -371,3 +371,12 @@ async def download_attendance():
     except Exception as e:
         logging.error("response: " + str({"error": e}))
         return {"error": e}
+
+
+@router.post("/file")
+async def create_upload_file(file: UploadFile = File(...)):
+
+    file_location = f"/Users/rahul.madan/PycharmProjects/slot-booking-app-backend/lol.jpeg"
+    with open(file_location, "wb+") as file_object:
+        file_object.write(file.file.read())
+    return {"filename": file.filename}

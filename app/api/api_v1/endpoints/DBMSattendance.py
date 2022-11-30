@@ -14,7 +14,8 @@ from app import cypher
 router = APIRouter()
 
 load_dotenv()
-logging.basicConfig(filename=os.getenv("LOG_PATH"), filemode='a', format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(filename=os.getenv("LOG_PATH"), filemode='a',
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 s3 = boto3.resource(service_name='s3')
 s3_client = boto3.client('s3', config=Config(signature_version='s3v4'))
 dynamo_resource = boto3.resource(service_name=os.getenv("AWS_SERVICE_NAME"),
@@ -67,8 +68,8 @@ async def login(request_body: Login):
             encryptedNetID = cypher.encrypt(request_body.net_id)
             net_id_len = cypher.encrypt(str(len(request_body.net_id)))
             logging.warning("response: " + str({"status": "LOGIN_SUCCESSFUL",
-                    "encrypted_net_id": encryptedNetID,
-                    "net_id_len": net_id_len}))
+                                                "encrypted_net_id": encryptedNetID,
+                                                "net_id_len": net_id_len}))
             return {"status": "LOGIN_SUCCESSFUL",
                     "encrypted_net_id": encryptedNetID,
                     "net_id_len": net_id_len}
@@ -85,7 +86,8 @@ async def login(request_body: Login):
         if student_details['roll_number'] == request_body.password:
             encryptedNetID = cypher.encrypt(request_body.net_id)
             net_id_len = cypher.encrypt(str(len(request_body.net_id)))
-            logging.warning("response: " + str({"status": "LOGIN_SUCCESSFUL", "encrypted_net_id": encryptedNetID, "net_id_len": net_id_len}))
+            logging.warning("response: " + str(
+                {"status": "LOGIN_SUCCESSFUL", "encrypted_net_id": encryptedNetID, "net_id_len": net_id_len}))
             return {"status": "LOGIN_SUCCESSFUL",
                     "encrypted_net_id": encryptedNetID,
                     "net_id_len": net_id_len}
@@ -106,13 +108,14 @@ async def verify_login(request_body: VerifyLogin):
                 decMessage = cypher.decrypt(request_body.encrypted_net_id)
                 if decMessage == "sonia.khetarpaul@snu.edu.in":
                     logging.warning("response: " + str({'loginSuccess': 1,
-                            'user_net_id': decMessage}))
+                                                        'user_net_id': decMessage}))
                     return {'loginSuccess': 1,
                             'user_net_id': decMessage}
                 result = student_details_table.query(KeyConditionExpression=Key('net_id').eq(decMessage))['Items'][0]
                 name = result['first_name'] + " " + result["last_name"]
                 roll_number = result['roll_number']
-                logging.warning("response: " + str({'loginSuccess': 1, 'user_net_id': decMessage, 'name': name, 'roll_number': roll_number}))
+                logging.warning("response: " + str(
+                    {'loginSuccess': 1, 'user_net_id': decMessage, 'name': name, 'roll_number': roll_number}))
                 return {'loginSuccess': 1,
                         'user_net_id': decMessage,
                         'name': name,
@@ -130,7 +133,7 @@ async def verify_login(request_body: VerifyLogin):
     except Exception as e:
         print(e)
         logging.error(e)
-        logging.warning("response "+str({'loginSuccess': 0, 'user_net_id': ""}))
+        logging.warning("response " + str({'loginSuccess': 0, 'user_net_id': ""}))
         return {'loginSuccess': 0,
                 'user_net_id': ""}
 
@@ -357,11 +360,11 @@ async def download_attendance():
             text_file.write(text)
 
         s3.Bucket(BUCKET).upload_file("/tmp/attendance.csv",
-                                      "DBMS_attendance/attendance " + str(datetime.now())[:10] +".csv")
+                                      "DBMS_attendance/attendance " + str(datetime.now())[:10] + ".csv")
         url = s3_client.generate_presigned_url(
             ClientMethod='get_object',
             Params={'Bucket': 'fastapi-slot-booking',
-                    'Key': "DBMS_attendance/attendance " + str(datetime.now())[:10] +".csv"},
+                    'Key': "DBMS_attendance/attendance " + str(datetime.now())[:10] + ".csv"},
             ExpiresIn=30,
         )
         if os.path.exists("/tmp/attendance.csv"):
@@ -375,8 +378,42 @@ async def download_attendance():
 
 @router.post("/file")
 async def create_upload_file(file: UploadFile = File(...)):
-
-    file_location = f"/Users/rahul.madan/PycharmProjects/slot-booking-app-backend/lol.jpeg"
+    file_location = f"/Users/rahul.madan/PycharmProjects/slot-booking-app-backend/input_image.jpeg"
     with open(file_location, "wb+") as file_object:
         file_object.write(file.file.read())
-    return {"filename": file.filename}
+    dir_list = os.listdir("/Users/rahul.madan/PycharmProjects/slot-booking-app-backend/stored_faces")
+    result = "No Match"
+    for pic in dir_list:
+        source_file = '/Users/rahul.madan/PycharmProjects/slot-booking-app-backend/stored_faces/' + str(pic)
+        target_file = '/Users/rahul.madan/PycharmProjects/slot-booking-app-backend/input_image.jpeg'
+        face_matches = compare_faces(source_file, target_file)
+        if face_matches > 0:
+            if result == "No Match":
+                result = pic.split(".")[0]
+            else:
+                result += ", " + str(pic.split(".")[0])
+            print(pic.split(".")[0])
+    return {result}
+
+
+def compare_faces(sourceFile, targetFile):
+    client = boto3.client('rekognition')
+
+    imageSource = open(sourceFile, 'rb')
+    imageTarget = open(targetFile, 'rb')
+
+    response = client.compare_faces(SimilarityThreshold=75,
+                                    SourceImage={'Bytes': imageSource.read()},
+                                    TargetImage={'Bytes': imageTarget.read()})
+
+    for faceMatch in response['FaceMatches']:
+        position = faceMatch['Face']['BoundingBox']
+        similarity = str(faceMatch['Similarity'])
+        print('The face at ' +
+              str(position['Left']) + ' ' +
+              str(position['Top']) +
+              ' matches with ' + similarity + '% confidence')
+
+    imageSource.close()
+    imageTarget.close()
+    return len(response['FaceMatches'])
